@@ -1,0 +1,70 @@
+{
+  "symbol": "SPY",
+  "price": 567.42,
+  "prevClose": 566.18,
+  "atr": 2.18,
+  "trend": "BULLISH",
+  "nextScanIn": 300,
+  "settings": {
+    "primaryTf": "1H",
+    "htfFilter": "4H",
+    "emaFast": 20,
+    "emaSlow": 50,
+    "atrPeriod": 14,
+    "atrMult": 1.5,
+    "rrTarget": 2,
+    "accountSize": 100000,
+    "riskPct": 1,
+    "desktopPopup": true,
+    "audioAlert": true,
+    "emailAlert": false,
+    "email": "",
+    "feedProvider": "finnhub",
+    "apiKey": "",
+    "autoConnectFeed": false
+  },
+  "signal": {
+    "side": "SHORT",
+    "entry": 567.42,
+    "stop": 570.69,
+    "target": 560.88,
+    "shares": 305,
+    "risk": 1000,
+    "reward": 2000,
+    "rr": 2
+  },
+  "history": [
+    {
+      "time": "09:35",
+      "side": "LONG",
+      "title": "Pullback to 1H EMA, HTF bullish",
+      "price": 561.2,
+      "status": "Filled"
+    },
+    {
+      "time": "11:00",
+      "side": "LONG",
+      "title": "Re-test setup confirmed",
+      "price": 563.88,
+      "status": "Filled"
+    },
+    {
+      "time": "13:15",
+      "side": "SHORT",
+      "title": "Pullback exhaustion, short signal",
+      "price": 567.42,
+      "status": "Pending"
+    }
+  ],
+  "logs": [
+    "[09:30:00] Market open - scan interval: 5 min",
+    "[09:35:00] SIGNAL LONG SPY @ 561.20 | SL 558.47 | TP 566.66 | Qty 320",
+    "[11:00:00] SIGNAL LONG SPY @ 563.88 | SL 561.15 | TP 569.34 | Qty 318",
+    "[13:15:00] SIGNAL SHORT SPY @ 567.42 | SL 570.69 | TP 560.88 | Qty 305"
+  ],
+  "feed": {
+    "connected": false,
+    "mode": "simulated",
+    "lastSource": "seed"
+  }
+}

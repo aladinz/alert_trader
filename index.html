@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AlertTrader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Sora:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-wrap">
+          <div class="brand-mark" aria-hidden="true">AT</div>
+          <div>
+            <h1 class="brand">AlertTrader</h1>
+            <p class="scan-meta" id="scanMeta">Scanning every 5 min</p>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <p class="clock" id="clock">00:00:00</p>
+          <button class="icon-btn" id="themeToggle" aria-label="Toggle Accent Glow">GLOW</button>
+        </div>
+      </header>
+
+      <div class="layout">
+        <aside class="sidebar panel">
+          <h2>Strategy Config</h2>
+
+          <label for="symbol">Symbol</label>
+          <input type="text" id="symbol" list="symbolSuggestions" value="SPY" placeholder="e.g. SPY, AAPL" maxlength="12" />
+          <datalist id="symbolSuggestions">
+            <option value="SPY"></option>
+            <option value="QQQ"></option>
+            <option value="IWM"></option>
+            <option value="AAPL"></option>
+            <option value="MSFT"></option>
+            <option value="NVDA"></option>
+            <option value="TSLA"></option>
+            <option value="AMZN"></option>
+            <option value="META"></option>
+          </datalist>
+
+          <label for="primaryTf">Primary Timeframe</label>
+          <select id="primaryTf">
+            <option>1H</option>
+            <option>30M</option>
+            <option>4H</option>
+          </select>
+
+          <label for="htfFilter">HTF Filter</label>
+          <select id="htfFilter">
+            <option>4H</option>
+            <option>1D</option>
+          </select>
+
+          <div class="field-sep"></div>
+
+          <label>EMA Lengths</label>
+          <div class="two-col">
+            <input type="number" id="emaFast" value="20" />
+            <input type="number" id="emaSlow" value="50" />
+          </div>
+
+          <label for="atrPeriod">ATR Period</label>
+          <input type="number" id="atrPeriod" value="14" />
+
+          <label for="atrMult">ATR Stop Multiplier</label>
+          <input type="number" id="atrMult" step="0.1" value="1.5" />
+
+          <label for="rrTarget">R:R Target</label>
+          <input type="number" id="rrTarget" step="0.1" value="2.0" />
+
+          <div class="field-sep"></div>
+
+          <label for="accountSize">Account Size ($)</label>
+          <input type="number" id="accountSize" value="100000" />
+
+          <label for="riskPct">Risk Per Trade (%)</label>
+          <input type="number" id="riskPct" step="0.1" value="1.0" />
+
+          <h3>Alert Quality Controls</h3>
+          <label for="minAlertScore">Only alert if Score >=</label>
+          <input type="number" id="minAlertScore" min="0" max="100" value="65" />
+
+          <label for="duplicateThrottleSec">Duplicate throttle (sec)</label>
+          <input type="number" id="duplicateThrottleSec" min="0" value="90" />
+
+          <label for="alertCooldownSec">Global cooldown (sec)</label>
+          <input type="number" id="alertCooldownSec" min="0" value="120" />
+
+          <h3>Market Hours Awareness</h3>
+          <label for="sessionMode">Session mode</label>
+          <select id="sessionMode">
+            <option value="auto">Auto (detect)</option>
+            <option value="pre">Pre-market</option>
+            <option value="regular">Regular</option>
+            <option value="after">After-hours</option>
+            <option value="closed">Closed</option>
+          </select>
+
+          <label class="check-row" for="autoSessionPresets">
+            <input type="checkbox" id="autoSessionPresets" checked /> Auto session risk/alert presets
+          </label>
+          <p class="control-hint" id="sessionStatus">Session: --</p>
+
+          <h3>Hard Risk Guardrails</h3>
+          <label for="maxPositionSize">Max position size (shares)</label>
+          <input type="number" id="maxPositionSize" min="1" value="500" />
+
+          <label for="maxDailyLoss">Max daily loss ($)</label>
+          <input type="number" id="maxDailyLoss" min="0" value="2500" />
+
+          <label for="currentDayPnl">Current day P/L ($)</label>
+          <input type="number" id="currentDayPnl" step="1" value="0" />
+
+          <label for="maxAtrPct">Max ATR % of price</label>
+          <input type="number" id="maxAtrPct" step="0.1" min="0" value="3.5" />
+
+          <label for="maxSpreadPct">Max spread % (estimated)</label>
+          <input type="number" id="maxSpreadPct" step="0.01" min="0" value="0.35" />
+
+          <label for="minRrGuardrail">Min R:R required</label>
+          <input type="number" id="minRrGuardrail" step="0.1" min="0" value="1.8" />
+
+          <button id="scanNowBtn" class="scan-btn">Run Scan Now</button>
+
+          <h3>Watchlist Scanner</h3>
+          <label for="watchlistInput">Symbols (comma or new line)</label>
+          <textarea id="watchlistInput" rows="4" placeholder="SPY, QQQ, AAPL, MSFT">SPY, QQQ, IWM, AAPL, MSFT, AMZN, NVDA, TSLA</textarea>
+          <button id="scanWatchlistBtn" class="scan-btn" type="button">Scan Watchlist</button>
+
+          <h3>Alert Channels</h3>
+          <label class="check-row" for="desktopPopup">
+            <input type="checkbox" id="desktopPopup" checked /> Desktop Popup
+          </label>
+          <label class="check-row" for="audioAlert">
+            <input type="checkbox" id="audioAlert" checked /> Audio Alert
+          </label>
+          <label class="check-row" for="emailAlert">
+            <input type="checkbox" id="emailAlert" /> Email (config below)
+          </label>
+          <input type="email" id="emailInput" placeholder="your@email.com" />
+
+          <h3>Data Feed</h3>
+          <label for="feedProvider">Provider</label>
+          <select id="feedProvider">
+            <option value="finnhub">Finnhub (API + WS)</option>
+          </select>
+
+          <label for="apiKeyInput">API Key</label>
+          <input type="password" id="apiKeyInput" placeholder="Enter provider API key" />
+
+          <div class="two-col">
+            <button id="connectFeedBtn" class="ghost-btn" type="button">Connect Feed</button>
+            <button id="quoteNowBtn" class="ghost-btn" type="button">Fetch Quote</button>
+          </div>
+          <p class="feed-status disconnected" id="feedStatus">Offline (simulated mode)</p>
+        </aside>
+
+        <main class="content">
+          <section class="stat-grid">
+            <article class="stat-card panel">
+              <p class="card-label" id="priceCardLabel">Symbol Price</p>
+              <p class="card-value" id="spyPrice">$567.42</p>
+              <p class="card-sub positive" id="spyDelta">+1.24 (+0.22%)</p>
+            </article>
+            <article class="stat-card panel">
+              <p class="card-label">4H Trend (HTF)</p>
+              <p class="card-value trend" id="htfTrend">BULLISH</p>
+              <p class="card-sub" id="trendDetail">Price above 50 EMA</p>
+            </article>
+            <article class="stat-card panel">
+              <p class="card-label">1H ATR(14)</p>
+              <p class="card-value" id="atrValue">$2.18</p>
+              <p class="card-sub" id="stopHint">Stop approx $3.27</p>
+            </article>
+            <article class="stat-card panel">
+              <p class="card-label">Signals Today</p>
+              <p class="card-value" id="signalCount">3</p>
+              <p class="card-sub" id="signalBreakdown">2 Long - 1 Short</p>
+            </article>
+          </section>
+
+          <section class="latest panel" id="latestPanel">
+            <div class="latest-head">
+              <div class="latest-actions">
+                <span class="badge short" id="signalSideBadge">SHORT</span>
+                <button id="copyOrderBtn" class="ghost-btn">Copy Order</button>
+              </div>
+            </div>
+
+            <div class="latest-grid">
+              <div>
+                <p class="metric-label">Symbol</p>
+                <p class="metric-value" id="latestSymbol">SPY</p>
+              </div>
+              <div>
+                <p class="metric-label">Entry</p>
+                <p class="metric-value" id="entryPrice">$567.42</p>
+              </div>
+              <div>
+                <p class="metric-label">Stop Loss</p>
+                <p class="metric-value negative" id="stopLoss">$570.69</p>
+              </div>
+              <div>
+                <p class="metric-label">Target</p>
+                <p class="metric-value positive" id="targetPrice">$560.88</p>
+              </div>
+              <div>
+                <p class="metric-label">Shares (1% risk)</p>
+                <p class="metric-value" id="shares">305</p>
+              </div>
+              <div>
+                <p class="metric-label">Risk $</p>
+                <p class="metric-value" id="riskDollars">$1,000</p>
+              </div>
+              <div>
+                <p class="metric-label">Reward $</p>
+                <p class="metric-value positive" id="rewardDollars">$2,000</p>
+              </div>
+              <div>
+                <p class="metric-label">R:R</p>
+                <p class="metric-value positive" id="rrDisplay">2.00:1</p>
+              </div>
+            </div>
+
+            <div class="atp-steps" id="atpSteps"></div>
+          </section>
+
+          <section class="setup-score panel">
+            <div class="setup-score-head">
+              <h2>Setup Scoring Panel</h2>
+              <p id="setupScoreStamp">Updated --</p>
+            </div>
+            <div class="setup-score-grid">
+              <div class="setup-score-main">
+                <p class="setup-score-value" id="setupScoreValue">--</p>
+                <p class="setup-score-grade" id="setupScoreGrade">--</p>
+                <p class="setup-score-bias" id="setupScoreBias">--</p>
+              </div>
+              <div class="setup-score-factors" id="setupScoreFactors"></div>
+            </div>
+          </section>
+
+          <section class="risk-guard panel">
+            <div class="history-head">
+              <h2>Risk Guardrails</h2>
+              <p class="guardrail-summary" id="guardrailSummary">Status: --</p>
+            </div>
+            <div id="guardrailList"></div>
+          </section>
+
+          <section>
+            <h2 class="section-title">Technical Indicators (1H)</h2>
+            <div class="indicator-grid">
+              <article class="indicator panel">
+                <p class="metric-label">EMA 20 (1H)</p>
+                <p class="metric-value" id="ema20Display">$565.80</p>
+                <p class="card-sub positive" id="ema20State">Price above</p>
+              </article>
+              <article class="indicator panel">
+                <p class="metric-label">EMA 50 (4H)</p>
+                <p class="metric-value" id="ema50Display">$558.30</p>
+                <p class="card-sub positive" id="ema50State">Trend bullish</p>
+              </article>
+              <article class="indicator panel">
+                <p class="metric-label">ATR 14 (1H)</p>
+                <p class="metric-value" id="atrIndicator">$2.18</p>
+                <p class="card-sub" id="atrState">Normal volatility</p>
+              </article>
+              <article class="indicator panel">
+                <p class="metric-label">Pullback to EMA?</p>
+                <p class="metric-value positive" id="pullbackStatus">YES</p>
+                <p class="card-sub positive" id="pullbackDetail">Bullish reclaim</p>
+              </article>
+              <article class="indicator panel">
+                <p class="metric-label">HTF Filter</p>
+                <p class="metric-value positive" id="filterStatus">PASS</p>
+                <p class="card-sub positive" id="filterDetail">4H EMA aligned</p>
+              </article>
+              <article class="indicator panel">
+                <p class="metric-label">Signal Quality</p>
+                <p class="metric-value warning" id="qualityLabel">HIGH</p>
+                <p class="card-sub warning" id="qualityDetail">All filters pass</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="history panel">
+            <div class="history-head">
+              <h2>Signal History - Today</h2>
+              <button id="clearHistoryBtn" class="ghost-btn">Clear</button>
+            </div>
+            <div id="historyList"></div>
+          </section>
+
+          <section class="watchlist panel">
+            <div class="history-head">
+              <h2>Watchlist Results</h2>
+              <p class="watchlist-meta" id="watchlistMeta">No watchlist scan yet.</p>
+            </div>
+            <div id="watchlistResults"></div>
+          </section>
+
+          <section class="logs panel">
+            <h2>System Log</h2>
+            <pre id="systemLog"></pre>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
