@@ -1,5 +1,21 @@
 const STORAGE_KEY = "alerttrader.v1";
 const SCAN_INTERVAL_SECONDS = 300;
+const GUARDRAIL_PROFILES = {
+  strict: {
+    maxPositionSize: 300,
+    maxDailyLoss: 1500,
+    maxAtrPct: 2.5,
+    maxSpreadPct: 0.25,
+    minRrGuardrail: 2.2
+  },
+  balanced: {
+    maxPositionSize: 500,
+    maxDailyLoss: 2500,
+    maxAtrPct: 3.5,
+    maxSpreadPct: 0.35,
+    minRrGuardrail: 1.8
+  }
+};
 
 const state = {
   symbol: "SPY",
@@ -49,7 +65,8 @@ const state = {
     currentDayPnl: 0,
     maxAtrPct: 3.5,
     maxSpreadPct: 0.35,
-    minRrGuardrail: 1.8
+    minRrGuardrail: 1.8,
+    guardrailProfile: "balanced"
   },
   feed: {
     connected: false,
@@ -155,6 +172,7 @@ const refs = {
   sessionMode: document.getElementById("sessionMode"),
   autoSessionPresets: document.getElementById("autoSessionPresets"),
   sessionStatus: document.getElementById("sessionStatus"),
+  guardrailProfile: document.getElementById("guardrailProfile"),
   maxPositionSize: document.getElementById("maxPositionSize"),
   maxDailyLoss: document.getElementById("maxDailyLoss"),
   currentDayPnl: document.getElementById("currentDayPnl"),
@@ -188,6 +206,7 @@ const inputIds = [
   "duplicateThrottleSec",
   "alertCooldownSec",
   "sessionMode",
+  "guardrailProfile",
   "maxPositionSize",
   "maxDailyLoss",
   "currentDayPnl",
@@ -205,6 +224,48 @@ function fMoney(value) {
 
 function fInt(value) {
   return value.toLocaleString("en-US");
+}
+
+function nearEqual(a, b, epsilon = 1e-6) {
+  return Math.abs(Number(a) - Number(b)) <= epsilon;
+}
+
+function detectGuardrailProfileFromSettings() {
+  for (const [profileName, profile] of Object.entries(GUARDRAIL_PROFILES)) {
+    const matches =
+      nearEqual(state.settings.maxPositionSize, profile.maxPositionSize) &&
+      nearEqual(state.settings.maxDailyLoss, profile.maxDailyLoss) &&
+      nearEqual(state.settings.maxAtrPct, profile.maxAtrPct) &&
+      nearEqual(state.settings.maxSpreadPct, profile.maxSpreadPct) &&
+      nearEqual(state.settings.minRrGuardrail, profile.minRrGuardrail);
+    if (matches) {
+      return profileName;
+    }
+  }
+  return "custom";
+}
+
+function applyGuardrailProfile(profileName, options = {}) {
+  const profile = GUARDRAIL_PROFILES[profileName];
+  if (!profile) {
+    return;
+  }
+
+  refs.maxPositionSize.value = String(profile.maxPositionSize);
+  refs.maxDailyLoss.value = String(profile.maxDailyLoss);
+  refs.maxAtrPct.value = String(profile.maxAtrPct);
+  refs.maxSpreadPct.value = String(profile.maxSpreadPct);
+  refs.minRrGuardrail.value = String(profile.minRrGuardrail);
+  refs.guardrailProfile.value = profileName;
+
+  syncStateFromInputs();
+  recalcSignalFromCurrentPrice();
+  paint();
+  schedulePersist();
+
+  if (!options.silent) {
+    logLine(`Guardrail profile applied: ${profileName}`);
+  }
 }
 
 function nowClock() {
@@ -345,6 +406,7 @@ function syncStateFromInputs() {
   state.settings.alertCooldownSec = Number(refs.alertCooldownSec.value) || 120;
   state.settings.sessionMode = refs.sessionMode.value || "auto";
   state.settings.autoSessionPresets = refs.autoSessionPresets.checked;
+  state.settings.guardrailProfile = refs.guardrailProfile.value || "custom";
   state.settings.maxPositionSize = Number(refs.maxPositionSize.value) || 500;
   state.settings.maxDailyLoss = Number(refs.maxDailyLoss.value) || 2500;
   state.settings.currentDayPnl = Number(refs.currentDayPnl.value) || 0;
@@ -376,6 +438,8 @@ function applyInputsFromState() {
   refs.alertCooldownSec.value = String(state.settings.alertCooldownSec ?? 120);
   refs.sessionMode.value = state.settings.sessionMode || "auto";
   refs.autoSessionPresets.checked = Boolean(state.settings.autoSessionPresets ?? true);
+  const detectedProfile = detectGuardrailProfileFromSettings();
+  refs.guardrailProfile.value = state.settings.guardrailProfile || detectedProfile;
   refs.maxPositionSize.value = String(state.settings.maxPositionSize ?? 500);
   refs.maxDailyLoss.value = String(state.settings.maxDailyLoss ?? 2500);
   refs.currentDayPnl.value = String(state.settings.currentDayPnl ?? 0);
@@ -449,6 +513,116 @@ function applyOfflineSnapshot(symbol) {
   state.feed.lastSource = "offline-symbol";
 }
 
+function estimateAtrFromOhlc(price, high, low, prevClose) {
+  const hi = Number.isFinite(high) ? high : price;
+  const lo = Number.isFinite(low) ? low : price;
+  const basis = Math.max(1, Number.isFinite(prevClose) && prevClose > 0 ? prevClose : price);
+  const range = Math.max(0.01, hi - lo);
+  return clamp(range * 0.7 + basis * 0.0025, 0.35, Math.max(6.5, basis * 0.08));
+}
+
+function parseStooqCsvQuote(csvRaw, symbol) {
+  if (!csvRaw || typeof csvRaw !== "string") {
+    return null;
+  }
+
+  const upperSymbol = String(symbol || "").toUpperCase();
+  const symbolWithSuffix = `${upperSymbol}.US`;
+  const lines = csvRaw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  // Some proxy responses include headers/metadata before the CSV row.
+  const line =
+    lines.find((candidate) => candidate.toUpperCase().startsWith(`${symbolWithSuffix},`)) ||
+    lines.find((candidate) => candidate.toUpperCase().startsWith(`${upperSymbol},`)) ||
+    lines.find((candidate) => /^[A-Z0-9.\-]+,\d{8},\d{6},/.test(candidate)) ||
+    "";
+
+  if (!line) {
+    return null;
+  }
+
+  const parts = line.split(",").map((v) => v.trim());
+  if (parts.length < 7) {
+    return null;
+  }
+
+  const quotedSymbol = String(parts[0] || "").replace(".US", "").toUpperCase();
+  if (quotedSymbol && quotedSymbol !== upperSymbol) {
+    return null;
+  }
+
+  const open = Number(parts[3]);
+  const high = Number(parts[4]);
+  const low = Number(parts[5]);
+  const close = Number(parts[6]);
+  if (!Number.isFinite(close) || close <= 0) {
+    return null;
+  }
+
+  const prevClose = Number.isFinite(open) && open > 0 ? open : close;
+  const atr = estimateAtrFromOhlc(close, high, low, prevClose);
+  return {
+    price: close,
+    prevClose,
+    atr,
+    trend: close >= prevClose ? "BULLISH" : "BEARISH"
+  };
+}
+
+async function fetchPublicQuoteForSymbol(symbol) {
+  const upper = String(symbol || "SPY").toUpperCase();
+  const stooqSymbol = `${upper.toLowerCase()}.us`;
+  const stooqUrl = `https://stooq.com/q/l/?s=${encodeURIComponent(stooqSymbol)}&i=5`;
+
+  // Primary public path for browser clients where direct stooq CORS may be blocked.
+  const proxyUrl = `https://r.jina.ai/http://stooq.com/q/l/?s=${encodeURIComponent(stooqSymbol)}&i=5`;
+
+  const attempts = [proxyUrl, stooqUrl];
+  for (const url of attempts) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        continue;
+      }
+
+      const text = await res.text();
+      const parsed = parseStooqCsvQuote(text, upper);
+      if (parsed) {
+        return { ok: true, quote: parsed };
+      }
+    } catch (_error) {
+      continue;
+    }
+  }
+
+  return { ok: false };
+}
+
+async function loadFallbackQuoteOrOffline(symbol) {
+  const result = await fetchPublicQuoteForSymbol(symbol);
+  if (result.ok && result.quote) {
+    state.prevClose = result.quote.prevClose;
+    state.atr = result.quote.atr;
+    applyMarketPrice(result.quote.price, "Public quote", symbol);
+    state.trend = result.quote.trend;
+    lastQuotedSymbol = String(symbol || "").toUpperCase();
+    return {
+      source: "public",
+      ok: true
+    };
+  }
+
+  applyOfflineSnapshot(symbol);
+  lastQuotedSymbol = String(symbol || "").toUpperCase();
+  return {
+    source: "offline",
+    ok: true
+  };
+}
+
 async function handleSymbolUpdate(reason) {
   const prevSymbol = state.symbol;
   normalizeSymbolInput();
@@ -478,12 +652,15 @@ async function handleSymbolUpdate(reason) {
   schedulePersist();
 
   if (!state.settings.apiKey) {
-    applyOfflineSnapshot(state.symbol);
-    lastQuotedSymbol = state.symbol;
+    const fallback = await loadFallbackQuoteOrOffline(state.symbol);
     recalcSignalFromCurrentPrice();
     paint();
     schedulePersist();
-    setFeedStatus(`Offline sample loaded for ${state.symbol} - enter API key for live data`, "disconnected");
+    if (fallback.source === "public") {
+      setFeedStatus(`Public quote loaded for ${state.symbol} (no API key)`, "disconnected");
+    } else {
+      setFeedStatus(`Offline sample loaded for ${state.symbol} - enter API key for live data`, "disconnected");
+    }
     return;
   }
 
@@ -956,10 +1133,17 @@ async function runWatchlistScan() {
         const dailyDelta = Number.isFinite(quote.d) ? Math.abs(Number(quote.d)) : Math.abs(price - prevClose);
         atr = clamp(dailyDelta * 0.8 + 1.2, 0.6, Math.max(2.2, price * 0.08));
       } else {
-        const drift = (Math.random() - 0.5) * 14;
-        price = clamp(state.price + drift, 12, 1200);
-        prevClose = clamp(price - (Math.random() - 0.45) * 4, 10, 1200);
-        atr = clamp(Math.abs(price - prevClose) * 0.7 + 1.0, 0.5, Math.max(2.0, price * 0.08));
+        const publicQuote = await fetchPublicQuoteForSymbol(symbol);
+        if (publicQuote.ok && publicQuote.quote) {
+          price = publicQuote.quote.price;
+          prevClose = publicQuote.quote.prevClose;
+          atr = publicQuote.quote.atr;
+        } else {
+          const snapshot = buildOfflineSnapshot(symbol);
+          price = snapshot.price;
+          prevClose = snapshot.prevClose;
+          atr = snapshot.atr;
+        }
       }
 
       const trend = price >= prevClose ? "BULLISH" : "BEARISH";
@@ -1656,7 +1840,25 @@ refs.connectFeedBtn.addEventListener("click", () => {
 
 refs.quoteNowBtn.addEventListener("click", () => {
   syncStateFromInputs();
-  fetchFinnhubQuote(true).catch(() => undefined);
+  if (state.settings.apiKey) {
+    fetchFinnhubQuote(true).catch(() => undefined);
+    return;
+  }
+
+  loadFallbackQuoteOrOffline(state.symbol)
+    .then((result) => {
+      recalcSignalFromCurrentPrice();
+      paint();
+      schedulePersist();
+      if (result.source === "public") {
+        setFeedStatus(`Public quote refreshed for ${state.symbol}`, "disconnected");
+        logLine(`Public quote refreshed for ${state.symbol}`);
+      } else {
+        setFeedStatus(`Offline sample refreshed for ${state.symbol}`, "disconnected");
+        logLine(`Offline sample refreshed for ${state.symbol}`);
+      }
+    })
+    .catch(() => undefined);
 });
 
 refs.scanWatchlistBtn.addEventListener("click", () => {
@@ -1696,7 +1898,33 @@ inputIds.forEach((id) => {
       return;
     }
 
+    if (id === "guardrailProfile") {
+      if (refs.guardrailProfile.value === "strict" || refs.guardrailProfile.value === "balanced") {
+        applyGuardrailProfile(refs.guardrailProfile.value);
+        return;
+      }
+
+      syncStateFromInputs();
+      recalcSignalFromCurrentPrice();
+      paint();
+      schedulePersist();
+      return;
+    }
+
     syncStateFromInputs();
+
+    if (
+      id === "maxPositionSize" ||
+      id === "maxDailyLoss" ||
+      id === "maxAtrPct" ||
+      id === "maxSpreadPct" ||
+      id === "minRrGuardrail"
+    ) {
+      const profile = detectGuardrailProfileFromSettings();
+      refs.guardrailProfile.value = profile;
+      state.settings.guardrailProfile = profile;
+    }
+
     recalcSignalFromCurrentPrice();
     paint();
     schedulePersist();

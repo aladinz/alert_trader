@@ -110,6 +110,14 @@
           <p class="control-hint" id="sessionStatus">Session: --</p>
 
           <h3>Hard Risk Guardrails</h3>
+          <label for="guardrailProfile">Guardrail profile</label>
+          <select id="guardrailProfile">
+            <option value="strict">Strict (capital defense first)</option>
+            <option value="balanced">Balanced (fewer false blocks)</option>
+            <option value="custom">Custom</option>
+          </select>
+          <p class="control-hint">Profiles set position size, daily loss, ATR %, spread %, and minimum R:R.</p>
+
           <label for="maxPositionSize">Max position size (shares)</label>
           <input type="number" id="maxPositionSize" min="1" value="500" />
 
