@@ -1771,6 +1771,10 @@ initializeState()
     refs.clock.textContent = nowClock();
     if (state.settings.autoConnectFeed && state.settings.apiKey) {
       connectFeed().catch(() => undefined);
+    } else if (state.settings.apiKey) {
+      handleSymbolUpdate("enter").catch(() => {
+        logLine(`Startup quote refresh failed for ${state.symbol}`);
+      });
     }
     schedulePersist();
   })
