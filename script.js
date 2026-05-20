@@ -396,6 +396,59 @@ function normalizeSymbolInput() {
   refs.symbol.value = cleaned.slice(0, 12);
 }
 
+function symbolHash(symbol) {
+  let hash = 0;
+  for (const char of String(symbol || "SPY").toUpperCase()) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+
+  return hash;
+}
+
+function buildOfflineSnapshot(symbol) {
+  const upper = String(symbol || "SPY").toUpperCase();
+  const presets = {
+    SPY: { price: 567.42, prevClose: 566.18, atr: 2.18, trend: "BULLISH" },
+    QQQ: { price: 485.76, prevClose: 484.33, atr: 1.94, trend: "BULLISH" },
+    IWM: { price: 201.34, prevClose: 200.61, atr: 1.42, trend: "BULLISH" },
+    AAPL: { price: 212.44, prevClose: 211.08, atr: 1.88, trend: "BULLISH" },
+    MSFT: { price: 452.18, prevClose: 450.92, atr: 2.11, trend: "BULLISH" },
+    AMZN: { price: 186.73, prevClose: 185.94, atr: 1.75, trend: "BULLISH" },
+    NVDA: { price: 123.84, prevClose: 122.9, atr: 3.94, trend: "BULLISH" },
+    TSLA: { price: 176.52, prevClose: 178.08, atr: 5.26, trend: "BEARISH" },
+    META: { price: 515.62, prevClose: 513.97, atr: 3.06, trend: "BULLISH" },
+    FIS: { price: 43.06, prevClose: 42.81, atr: 0.72, trend: "BULLISH" }
+  };
+
+  if (presets[upper]) {
+    return { ...presets[upper] };
+  }
+
+  const hash = symbolHash(upper);
+  const price = Number((20 + (hash % 9000) / 10).toFixed(2));
+  const drift = (((hash >> 8) % 21) - 10) / 1000;
+  const prevClose = Number((price * (1 + drift)).toFixed(2));
+  const atr = Number(
+    Math.max(0.35, Math.min(price * 0.08, Math.abs(price - prevClose) * 0.8 + 0.75)).toFixed(2)
+  );
+
+  return {
+    price,
+    prevClose,
+    atr,
+    trend: price >= prevClose ? "BULLISH" : "BEARISH"
+  };
+}
+
+function applyOfflineSnapshot(symbol) {
+  const snapshot = buildOfflineSnapshot(symbol);
+  state.price = snapshot.price;
+  state.prevClose = snapshot.prevClose;
+  state.atr = snapshot.atr;
+  state.trend = snapshot.trend;
+  state.feed.lastSource = "offline-symbol";
+}
+
 async function handleSymbolUpdate(reason) {
   const prevSymbol = state.symbol;
   normalizeSymbolInput();
@@ -425,6 +478,12 @@ async function handleSymbolUpdate(reason) {
   schedulePersist();
 
   if (!state.settings.apiKey) {
+    applyOfflineSnapshot(state.symbol);
+    lastQuotedSymbol = state.symbol;
+    recalcSignalFromCurrentPrice();
+    paint();
+    schedulePersist();
+    setFeedStatus(`Offline sample loaded for ${state.symbol} - enter API key for live data`, "disconnected");
     return;
   }
 
@@ -466,7 +525,7 @@ function refreshFeedUi() {
     if (state.settings.apiKey) {
       setFeedStatus("Offline (ready to connect)", "disconnected");
     } else {
-      setFeedStatus("Offline (simulated mode)", "disconnected");
+      setFeedStatus("Offline (simulated mode - enter API key for live data)", "disconnected");
     }
   }
 }
