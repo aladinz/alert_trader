@@ -1,0 +1,6 @@
+.server.pid
+__pycache__/
+*.pyc
+*.tmp
+Alert Trader.lnk
+

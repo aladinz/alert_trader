@@ -62,17 +62,30 @@ No build step is required.
 
 You can open `index.html` directly, but using a local static server is recommended.
 
-### Option A: VS Code Live Server
+### Option A: Desktop Shortcut (Recommended)
+- Double-click the **Alert Trader** shortcut on your Desktop.
+- Automatically launches the background server (windowless) if not already running and opens AlertTrader in your default browser.
+
+### Option B: VS Code Live Server
 - Open project folder.
 - Run Live Server on `index.html`.
 
-### Option B: Python static server
+### Option C: Python static server / Launcher
 ```bash
 cd AlertTrader_Strategy
+python launch.py
+```
+Or run directly:
+```bash
 python -m http.server 8080
 ```
 Then open `http://localhost:8080`.
 
+To stop the background server at any time:
+```bash
+python launch.py --stop
+# or double-click stop.bat
+```
 ## Initial Data + Persistence
 
 Load order:
